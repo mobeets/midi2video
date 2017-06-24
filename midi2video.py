@@ -72,4 +72,5 @@ def main(fnms):
             M.loop()
 
 if __name__ == '__main__':
-    main(['data/CatsA.mp4', 'data/CatsB.mp4', 'data/CatsC.mp4'])
+    import glob
+    main(glob.glob('data/*.mp4'))
