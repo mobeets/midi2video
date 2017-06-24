@@ -1,20 +1,20 @@
 import time
 import glob
+import argparse
 import threading
 import mido
 import numpy as np
 import pygame as pg
 from moviepy.editor import VideoFileClip
 
-MIDI_NOTE_TO_QUIT = 50
 pg.init()
 pg.display.set_caption('midi2movie')
 
 def is_midi_change_msg(msg):
     return msg is not None and msg.type == 'note_on'
 
-def is_midi_quit_msg(msg):
-    return is_midi_change_msg(msg) and msg.note == MIDI_NOTE_TO_QUIT
+def is_midi_quit_msg(msg, quitnote):
+    return is_midi_change_msg(msg) and msg.note == quitnote
 
 def imdisplay(imarray, screen=None):
     """
@@ -85,18 +85,19 @@ def preview(clip, inport=None, fps=15, audio=True, audio_fps=22050, audio_buffer
             if is_midi_change_msg(msg):
                 return msg
 
-def main(fnms, play_audio=False):
+def main(fnms, play_audio=False, loop_until_change=True, port_name=None, quitnote=50):
     """
     plays video clip based on which midi note is played
     """
     clips = [VideoFileClip(fnm) for fnm in fnms]
     clip = None
     msg = None    
-    with mido.open_input() as inport:
-        while not is_midi_quit_msg(msg):
+    with mido.open_input(port_name) as inport:
+        while not is_midi_quit_msg(msg, quitnote):
             if clip is not None: # play current clip
                 msg = preview(clip, inport, audio=play_audio)
-                clip = None
+                if not loop_until_change:
+                    clip = None
             else: # check for midi note
                 msg = inport.poll()
             if is_midi_change_msg(msg): # update clip
@@ -104,10 +105,22 @@ def main(fnms, play_audio=False):
                 clip = clips[curInd]
 
 if __name__ == '__main__':
-    if len(mido.get_input_names()) == 0:
+    ports = mido.get_input_names()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--audio", action="store_true", 
+        help="play audio along with video")
+    parser.add_argument("--loop", action="store_true", 
+        help="play most recent video on loop until midi note changes")
+    parser.add_argument("--portname", type=str, 
+        help="name of midi port (optional)", choices=ports)
+    parser.add_argument("--quitnote", type=int,
+        default=50, help="which midi note to quit on")
+    args = parser.parse_args()
+
+    if len(ports) == 0:
         print "No midi controllers found."
     else:
         print "Play a note on a midi controller to get started!"
-        print "(To quit, play midi note {})".format(MIDI_NOTE_TO_QUIT)
+        print "(To quit, play midi note {})".format(args.quitnote)
         fnms = glob.glob('data/*.mp4')
-        main(fnms)
+        main(fnms, play_audio=args.audio, loop_until_change=args.loop, port_name=args.portname, quitnote=args.quitnote)
