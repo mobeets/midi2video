@@ -13,6 +13,6 @@ Options:
 
 __Requirements__:
 
-- `mido`
-- `pygame`
-- `moviepy`
+- `pip install mido`
+- `pip install pygame`
+- `pip install moviepy`
