@@ -11,12 +11,6 @@ Options:
 * Loop video: `--loop`
 * Midi note to quit: `--quitnote 50`
 
-__Requirements__:
+__Install requirements__: `pip install -r requirements.txt`
 
-- `pip install mido`
-- `pip install pygame`
-- `pip install moviepy`
-
-__Extras__:
-
-`midi2video2.py` arranges clips in a grid, and each clip is played as long as the corresponding midi note is being played. However, audio is not an option here.
+__Extras__: `midi2video2.py` arranges clips in a grid, and each clip is played as long as the corresponding midi note is being played. However, audio is not an option here.
