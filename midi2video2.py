@@ -1,3 +1,4 @@
+import os.path
 import time
 import glob
 import argparse
@@ -27,7 +28,10 @@ def imdisplay(imarray, screen=None):
     screen.blit(a, (0, 0))
     pg.display.flip()
 
-def preview(clip, inport=None, quitnote=None, fps=15, audio=True, audio_fps=22050, audio_buffersize=3000, audio_nbytes=2):
+def pitch_to_clip_index(note, nclips, offset=0):
+    return (note + offset) % nclips
+
+def preview(clip, inport=None, quitnote=None, offset=0, fps=15, audio=True, audio_fps=22050, audio_buffersize=3000, audio_nbytes=2):
     """
     src: https://github.com/Zulko/moviepy/blob/master/moviepy/video/io/preview.py
     """
@@ -67,10 +71,10 @@ def preview(clip, inport=None, quitnote=None, fps=15, audio=True, audio_fps=2205
             continue
         for msg in inport.iter_pending():
             if is_midi_change_msg(msg, 'note_on'): # play clip                
-                ci = msg.note % nclips
+                ci = pitch_to_clip_index(msg.note, nclips, offset)
                 clip.clips[ci] = clips[ci].set_start(t).copy()
             elif is_midi_change_msg(msg, 'note_off'): # hide clip                
-                ci = msg.note % nclips
+                ci = pitch_to_clip_index(msg.note, nclips, offset)
                 clip.clips[ci] = clips[ci].subclip(0, 0).copy()
             if is_midi_quit_msg(msg, quitnote):
                 return msg
@@ -80,7 +84,7 @@ def preview(clip, inport=None, quitnote=None, fps=15, audio=True, audio_fps=2205
         imdisplay(img, screen)
     return None
 
-def make_clip_grid(clips, ncols, nrows, width=300, height=300):
+def make_clip_grid(clips, ncols, nrows, width=100, height=100):
     """
     http://zulko.github.io/moviepy/getting_started/compositing.html
     """
@@ -88,14 +92,18 @@ def make_clip_grid(clips, ncols, nrows, width=300, height=300):
     c = 0
     for px in np.arange(0.0, 1.0, 1.0/ncols):
         for py in np.arange(0.0, 1.0, 1.0/nrows):
+            if c >= len(clips):
+                continue
             cur_clip = clips[c]
+            sz = min(cur_clip.w, cur_clip.h)
+            cur_clip = cur_clip.crop(x_center=cur_clip.w/2, y_center=cur_clip.h/2, width=sz, height=sz) # crop to be square (centered)
             cur_clip = cur_clip.resize(width=width) # fit within grid cell
             cur_clip = cur_clip.set_pos((px, py), relative=True) # place in grid
             cur_clips.append(cur_clip.loop()) # must loop given midi handling
             c += 1
     return CompositeVideoClip(cur_clips, size=(ncols*width, nrows*height))
 
-def main(fnms, play_audio=False, port_name=None, quitnote=50):
+def main(fnms, play_audio=False, port_name=None, quitnote=50, size=150, offset=0):
     """
     plays clips in a grid, where each can start and stop
         independently based on which midi note is being pressed
@@ -104,11 +112,11 @@ def main(fnms, play_audio=False, port_name=None, quitnote=50):
     clips = [VideoFileClip(fnm) for fnm in fnms]
     nrows = np.floor(np.sqrt(len(clips))).astype(int)
     ncols = np.ceil(len(clips)*1.0 / nrows).astype(int)
-    clip = make_clip_grid(clips, ncols, nrows)
+    clip = make_clip_grid(clips, ncols, nrows, width=size, height=size)
     msg = None
     with mido.open_input(port_name) as inport:
         while not is_midi_quit_msg(msg, quitnote):
-            msg = preview(clip, inport, audio=play_audio, quitnote=quitnote)
+            msg = preview(clip, inport, offset=offset, audio=play_audio, quitnote=quitnote)
 
 if __name__ == '__main__':
     ports = mido.get_input_names()
@@ -119,6 +127,12 @@ if __name__ == '__main__':
         help="name of midi port (optional)", choices=ports)
     parser.add_argument("--quitnote", type=int,
         default=50, help="which midi note to quit on")
+    parser.add_argument("--offset", type=int,
+        default=0, help="offset of midi note assignments")
+    parser.add_argument("--size", type=int,
+        default=150, help="size of each video")
+    parser.add_argument("--indir", type=str,
+        default='data', help="directory with .mp4 files")
     args = parser.parse_args()
 
     if len(ports) == 0:
@@ -126,5 +140,5 @@ if __name__ == '__main__':
     else:
         print "Play a note on a midi controller to get started!"
         print "(To quit, play midi note {})".format(args.quitnote)
-        fnms = glob.glob('data/*.mp4')
-        main(fnms, play_audio=args.audio, port_name=args.portname, quitnote=args.quitnote)
+        fnms = glob.glob(os.path.join(args.indir, '*.mp4'))
+        main(fnms, play_audio=args.audio, port_name=args.portname, quitnote=args.quitnote, size=args.size, offset=args.offset)
