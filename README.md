@@ -1,7 +1,7 @@
 
 Play videos using a midi controller.
 
-__How it works__:
+__How it works: midi2video__:
 
 Running `python midi2video.py` loads up all `.mp4` files in `data/`, and plays one of them each time you play a note on a connected midi controller.
 
@@ -11,6 +11,14 @@ Options:
 * Loop video: `--loop`
 * Midi note to quit: `--quitnote 50`
 
-__Install requirements__: `pip install -r requirements.txt`
+__How it works: midi2video2__:
 
-__Extras__: `midi2video2.py` arranges clips in a grid, and each clip is played as long as the corresponding midi note is being played. However, audio is not an option here.
+Running `python midi2video2.py` arranges clips in a grid, and plays each clip as long as the corresponding midi note is being played. Audio is not an option here.
+
+Options:
+
+* Size of each video: `--size 150`
+* Midi note to quit: `--quitnote 50`
+* Mapfile for specifying video rotation and pad order: `--mapfile video_map.yml`
+
+__Install requirements__: `pip install -r requirements.txt`

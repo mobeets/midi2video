@@ -103,26 +103,53 @@ def make_clip_grid(clips, ncols, nrows, width=100, height=100):
             c += 1
     return CompositeVideoClip(cur_clips, size=(ncols*width, nrows*height))
 
-def main(fnms, play_audio=False, port_name=None, quitnote=50, size=150, offset=0):
+def load_clip(filename=None, obj=None, indir=None, ext=None):
+    """
+    load clip from filename or from yaml object with rotation info
+    """
+    if filename is not None:
+        return VideoFileClip(filename)
+    assert obj is not None and indir is not None and ext is not None
+    clip = VideoFileClip(os.path.join(indir, obj['name'] + ext))
+    if 'rotation' in obj:
+        clip = clip.rotate(obj['rotation'])
+    return clip
+
+def load_clips_from_yaml(indir, fnm, ext):
+    import yaml
+    xs = []
+    with open(fnm) as f:
+        xs = yaml.load(f)
+    return [load_clip(obj=x, indir=indir, ext=ext) for x in xs]
+
+def load_clips(indir, yaml_file, ext):
+    if yaml_file is not None:
+        # load all files listed in yaml file
+        clips = load_clips_from_yaml(indir, yaml_file, ext)
+    else:
+        # load all files of type ext in indir
+        fnms = glob.glob(os.path.join(indir, '*' + ext))
+        clips = [load_clip(filename=fnm) for fnm in fnms]
+    return clips
+
+def main(indir, yaml_file=None, port_name=None, quitnote=50, size=150, offset=0, ext='.mp4'):
     """
     plays clips in a grid, where each can start and stop
         independently based on which midi note is being pressed
         i.e., clips play as long as that key is being pressed
     """
-    clips = [VideoFileClip(fnm) for fnm in fnms]
+    clips = load_clips(indir, yaml_file, ext)
     nrows = np.floor(np.sqrt(len(clips))).astype(int)
     ncols = np.ceil(len(clips)*1.0 / nrows).astype(int)
     clip = make_clip_grid(clips, ncols, nrows, width=size, height=size)
     msg = None
     with mido.open_input(port_name) as inport:
         while not is_midi_quit_msg(msg, quitnote):
-            msg = preview(clip, inport, offset=offset, audio=play_audio, quitnote=quitnote)
+            msg = preview(clip, inport, offset=offset, audio=False, quitnote=quitnote)
 
 if __name__ == '__main__':
     ports = mido.get_input_names()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--audio", action="store_true", 
-        help="play audio along with video")
     parser.add_argument("--portname", type=str, 
         help="name of midi port (optional)", choices=ports)
     parser.add_argument("--quitnote", type=int,
@@ -133,12 +160,15 @@ if __name__ == '__main__':
         default=150, help="size of each video")
     parser.add_argument("--indir", type=str,
         default='data', help="directory with .mp4 files")
+    parser.add_argument("--mapfile", type=str,
+        help="file with video-pad assignments (.yml)")
+    parser.add_argument("--ext", type=str,
+        default='.mp4', help="default movie extension")
     args = parser.parse_args()
 
     if len(ports) == 0:
         print "No midi controllers found."
     else:
         print "Play a note on a midi controller to get started!"
-        print "(To quit, play midi note {})".format(args.quitnote)
-        fnms = glob.glob(os.path.join(args.indir, '*.mp4'))
-        main(fnms, play_audio=args.audio, port_name=args.portname, quitnote=args.quitnote, size=args.size, offset=args.offset)
+        print "(To quit, play midi note {})".format(args.quitnote)        
+        main(args.indir, yaml_file=args.mapfile, port_name=args.portname, quitnote=args.quitnote, size=args.size, offset=args.offset, ext=args.ext)
