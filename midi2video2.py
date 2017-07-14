@@ -6,7 +6,7 @@ import threading
 import mido
 import numpy as np
 import pygame as pg
-from moviepy.editor import VideoFileClip, CompositeVideoClip, ColorClip
+from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, ColorClip
 
 pg.init()
 pg.display.set_caption('midi2movie')
@@ -28,10 +28,10 @@ def imdisplay(imarray, screen=None):
     screen.blit(a, (0, 0))
     pg.display.flip()
 
-def pitch_to_clip_index(note, nclips, offset=0):
-    return -(note + offset) % nclips
+def pitch_to_clip_index(note, nclips, offset=0, piano=False):
+    return (note + offset) % (nclips-int(piano)) + int(piano)
 
-def preview(clip, inport=None, quitnote=None, offset=0, fps=15, audio=True, audio_fps=22050, audio_buffersize=3000, audio_nbytes=2, oneshot=False):
+def preview(clip, inport=None, quitnote=None, offset=0, fps=15, audio=True, audio_fps=22050, audio_buffersize=3000, audio_nbytes=2, oneshot=False, piano=False):
     """
     src: https://github.com/Zulko/moviepy/blob/master/moviepy/video/io/preview.py
     """
@@ -65,17 +65,18 @@ def preview(clip, inport=None, quitnote=None, offset=0, fps=15, audio=True, audi
     nclips = len(clips)
     clip_end_times = [0]*nclips # init
     for i in xrange(nclips): # start with all clips hidden
-        clip.clips[i] = clips[i].subclip(0, 0).copy()
+        if i > 0 or not piano:
+            clip.clips[i] = clips[i].subclip(0, 0).copy()
     while True:
         t += 1.0/fps
         for event in pg.event.get():
             continue
         for msg in inport.iter_pending():
             if is_midi_change_msg(msg, 'note_on'): # play clip
-                ci = pitch_to_clip_index(msg.note, nclips, offset)
+                ci = pitch_to_clip_index(msg.note, nclips, offset, piano)
                 clip.clips[ci] = clips[ci].set_start(t).copy()
             elif is_midi_change_msg(msg, 'note_off'): # hide clip
-                ci = pitch_to_clip_index(msg.note, nclips, offset)
+                ci = pitch_to_clip_index(msg.note, nclips, offset, piano)
                 clip_end_times[ci] = clip.clips[ci].start + clip.clips[ci].duration
                 if not oneshot:
                     clip.clips[ci] = clips[ci].subclip(0, 0).copy()
@@ -113,6 +114,39 @@ def make_clip_grid(clips, ncols, nrows, loop=False, width=100, height=100):
             c += 1
     return CompositeVideoClip(cur_clips, size=(ncols*width, nrows*height))
 
+def load_bg_clip(width, filename='data/piano.jpeg'):
+    return ImageClip(filename).resize(width=width)
+
+def make_clip_piano(clips, loop=False, width=100, height=100):
+    """
+    http://zulko.github.io/moviepy/getting_started/compositing.html
+    """
+    assert(len(clips) == 12)
+    white_key_inds = [0,2,4,5,7,9,11]
+    black_key_inds = [1,3,6,8,10]
+    white_key_px = np.arange(0.0, 1.0, 1.0/7)
+    black_key_px = white_key_px + (1.0/14)
+    black_key_px = np.hstack([black_key_px[:2], black_key_px[3:]])
+
+    # arrange clips as if on a keyboard
+    cur_clips = [load_bg_clip(7*width)]
+    for c in xrange(12):
+        if c in white_key_inds:
+            px = white_key_px[white_key_inds.index(c)]
+            py = 0.5
+        else:
+            px = black_key_px[black_key_inds.index(c)]
+            py = 0.0
+        cur_clip = clips[c]
+        sz = min(cur_clip.w, cur_clip.h)
+        cur_clip = cur_clip.crop(x_center=cur_clip.w/2, y_center=cur_clip.h/2, width=sz, height=sz) # crop to be square (centered)
+        cur_clip = cur_clip.resize(width=width) # fit within grid cell
+        cur_clip = cur_clip.set_pos((px, py), relative=True) # place in grid
+        if loop:
+            cur_clip = cur_clip.loop()
+        cur_clips.append(cur_clip)
+    return CompositeVideoClip(cur_clips, size=(7*width, 2*height))
+
 def load_clip(filename=None, obj=None, indir=None, ext=None):
     """
     load clip from filename or from yaml object with rotation info
@@ -142,7 +176,7 @@ def load_clips(indir, yaml_file, ext):
         clips = [load_clip(filename=fnm) for fnm in fnms]
     return clips
 
-def main(indir, yaml_file=None, port_name=None, quitnote=50, size=150, offset=0, ext='.mp4', loop=False, oneshot=False):
+def main(indir, yaml_file=None, port_name=None, quitnote=50, size=150, offset=0, ext='.mp4', loop=False, oneshot=False, piano=False):
     """
     plays clips in a grid, where each can start and stop
         independently based on which midi note is being pressed
@@ -151,11 +185,14 @@ def main(indir, yaml_file=None, port_name=None, quitnote=50, size=150, offset=0,
     clips = load_clips(indir, yaml_file, ext)
     nrows = np.floor(np.sqrt(len(clips))).astype(int)
     ncols = np.ceil(len(clips)*1.0 / nrows).astype(int)
-    clip = make_clip_grid(clips, ncols, nrows, loop=loop, width=size, height=size)
+    if piano and len(clips) == 12:
+        clip = make_clip_piano(clips, loop=loop, width=size, height=size)
+    else:
+        clip = make_clip_grid(clips, ncols, nrows, loop=loop, width=size, height=size)
     msg = None
     with mido.open_input(port_name) as inport:
         while not is_midi_quit_msg(msg, quitnote):
-            msg = preview(clip, inport, offset=offset, audio=False, quitnote=quitnote, oneshot=oneshot)
+            msg = preview(clip, inport, offset=offset, audio=False, quitnote=quitnote, oneshot=oneshot, piano=piano)
 
 if __name__ == '__main__':
     ports = mido.get_input_names()
@@ -168,6 +205,8 @@ if __name__ == '__main__':
         help="play video on loop as long as key held down")
     parser.add_argument("--oneshot", action="store_true", 
         help="play full video on every trigger")
+    parser.add_argument("--piano", action="store_true", 
+        help="if 12 videos, arrange clips like a piano")
     parser.add_argument("--offset", type=int,
         default=0, help="offset of midi note assignments")
     parser.add_argument("--size", type=int,
@@ -185,4 +224,4 @@ if __name__ == '__main__':
     else:
         print "Play a note on a midi controller to get started!"
         print "(To quit, play midi note {})".format(args.quitnote)        
-        main(args.indir, yaml_file=args.mapfile, port_name=args.portname, quitnote=args.quitnote, size=args.size, offset=args.offset, ext=args.ext, loop=args.loop, oneshot=args.oneshot)
+        main(args.indir, yaml_file=args.mapfile, port_name=args.portname, quitnote=args.quitnote, size=args.size, offset=args.offset, ext=args.ext, loop=args.loop, oneshot=args.oneshot, piano=args.piano)
