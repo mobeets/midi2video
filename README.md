@@ -1,5 +1,5 @@
 
-Play videos using a midi controller.
+Play videos using a midi controller. Example application: [cat piano](http://mobeets.github.io/made/cat-piano).
 
 __How it works: midi2video__:
 
