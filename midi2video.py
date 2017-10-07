@@ -1,3 +1,4 @@
+import os.path
 import time
 import glob
 import argparse
@@ -115,6 +116,12 @@ if __name__ == '__main__':
         help="name of midi port (optional)", choices=ports)
     parser.add_argument("--quitnote", type=int,
         default=50, help="which midi note to quit on")
+    parser.add_argument("--datadir", type=str,
+        default='data',
+        help="directory containing videos")
+    parser.add_argument("--ext", type=str,
+        default='mp4',
+        help="video file type to look for")
     args = parser.parse_args()
 
     if len(ports) == 0:
@@ -122,5 +129,5 @@ if __name__ == '__main__':
     else:
         print "Play a note on a midi controller to get started!"
         print "(To quit, play midi note {})".format(args.quitnote)
-        fnms = glob.glob('data/*.mp4')
+        fnms = glob.glob(os.path.join(args.datadir, '*.' + args.ext))
         main(fnms, play_audio=args.audio, loop_until_change=args.loop, port_name=args.portname, quitnote=args.quitnote)
